@@ -1,0 +1,443 @@
+# arch-sky - a calmer, more deliberate Plymouth splash.
+#
+# Layout
+#   * aurora/starfield background
+#   * tinted Arch logo with a slow halo and orbiting particles
+#   * a frost-glass passphrase panel with a padlock, animated bullets,
+#     a blinking caret, and a shake/red flush on a wrong passphrase
+#   * a thin, low-contrast progress line instead of the stock chunky bar;
+#     it is hidden while the passphrase is being entered and outside boot
+#   * the latest systemd unit status as a quiet subtitle
+#
+# All geometry scales from the screen height, so 1080p, 1440p and 4K all
+# end up with the same visual proportions.
+
+Window.SetBackgroundTopColor (0.03, 0.045, 0.10);
+Window.SetBackgroundBottomColor (0.008, 0.010, 0.025);
+
+scale = Math.Clamp (Window.GetHeight () / 1080, 0.62, 1.9);
+W = Window.GetWidth ();
+H = Window.GetHeight ();
+wx = Window.GetX ();
+wy = Window.GetY ();
+cx = wx + W / 2;
+cy = wy + H / 2;
+
+mode = Plymouth.GetMode ();
+is_boot = (mode == "boot");
+
+global.frame = 0;
+global.status = "normal";
+global.last_bullets = 0;
+global.progress = 0;
+global.bar_alpha = 0;
+global.dialog_alpha = 0;
+global.logo_y = 0;
+global.shake = 0;
+global.error_alpha = 0;
+global.burst_alpha = 0;
+global.prompt_text = "";
+
+#----------------------------------------- Backdrop -------------------------------
+
+background_image = Image ("background.png").Scale (W, H);
+background_sprite = Sprite (background_image);
+background_sprite.SetPosition (wx, wy, -100);
+
+#----------------------------------------- Logo ----------------------------------
+
+logo_size = Math.Int (232 * scale);
+logo_x = cx - logo_size / 2;
+logo_y_normal = wy + H * 0.46 - logo_size / 2;
+logo_y_password = wy + H * 0.435 - logo_size / 2;
+global.logo_y = logo_y_normal;
+
+logo_image = Image ("logo.png").Scale (logo_size, logo_size);
+logo_sprite = Sprite (logo_image);
+logo_sprite.SetPosition (logo_x, global.logo_y, 10);
+
+halo_size = Math.Int (logo_size * 2.9);
+halo_image = Image ("halo.png").Scale (halo_size, halo_size);
+halo_sprite = Sprite (halo_image);
+halo_sprite.SetPosition (cx - halo_size / 2, global.logo_y + logo_size / 2 - halo_size / 2, 5);
+
+burst_image = Image ("halo-green.png").Scale (halo_size, halo_size);
+burst_sprite = Sprite (burst_image);
+burst_sprite.SetPosition (cx - halo_size / 2, global.logo_y + logo_size / 2 - halo_size / 2, 6);
+burst_sprite.SetOpacity (0);
+
+orbit_radius = logo_size * 0.80;
+orbit_size = Math.Int (13 * scale);
+orbit_image = Image ("orbit-dot.png").Scale (orbit_size, orbit_size);
+orbit = [Sprite (orbit_image), Sprite (orbit_image), Sprite (orbit_image)];
+for (i = 0; i < 3; i++)
+  {
+    orbit[i].SetPosition (0, 0, 12);
+    orbit[i].SetOpacity (0);
+  }
+
+#----------------------------------------- Status line ---------------------------
+
+status_sprite = Sprite ();
+status_sprite.SetPosition (0, 0, 20);
+status_sprite.SetOpacity (0);
+
+#----------------------------------------- Progress line -------------------------
+
+track_visible_w = Math.Min (W * 0.46, 900 * scale);
+track_h = Math.Max (4, Math.Int (8 * scale));
+track_image = Image ("progress-track.png").Scale (track_visible_w, track_h);
+track_sprite = Sprite (track_image);
+track_sprite.SetPosition (cx - track_visible_w / 2, wy + H * 0.935, 6);
+track_sprite.SetOpacity (0);
+
+fill_original = Image ("progress-fill.png");
+fill_sprite = Sprite ();
+fill_sprite.SetPosition (cx - track_visible_w / 2, wy + H * 0.935, 7);
+fill_sprite.SetOpacity (0);
+
+glow_original = Image ("progress-glow.png");
+glow_sprite = Sprite ();
+glow_sprite.SetPosition (cx - track_visible_w / 2, wy + H * 0.935, 5);
+glow_sprite.SetOpacity (0);
+
+#----------------------------------------- Dialog geometry ----------------------
+
+dialog_scale = Math.Min (scale, (W * 0.86) / 780);
+dlg_w = Math.Int (780 * dialog_scale);
+dlg_h = Math.Int (160 * dialog_scale);
+dlg_x = cx - dlg_w / 2;
+dlg_y = wy + H * 0.665;
+dlg_lock_size = Math.Int (80 * dialog_scale);
+dlg_prompt_x = 130 * dialog_scale;
+dlg_prompt_y = 24 * dialog_scale;
+dlg_dot_size = Math.Int (30 * dialog_scale);
+dlg_dot_y = 78 * dialog_scale;
+dlg_dot_step = 30 * dialog_scale;
+dlg_caret_w = Math.Max (2, Math.Int (4 * dialog_scale));
+dlg_caret_h = Math.Int (30 * dialog_scale);
+
+#----------------------------------------- Sprites -------------------------------
+
+fun dialog_setup ()
+  {
+    panel_image = Image ("panel.png").Scale (dlg_w, dlg_h);
+    global.dialog.panel = Sprite (panel_image);
+    global.dialog.panel.SetOpacity (0);
+
+    lock_image = Image ("lock.png").Scale (dlg_lock_size, dlg_lock_size);
+    global.dialog.lock = Sprite (lock_image);
+    global.dialog.lock.SetOpacity (0);
+
+    prompt_image = Image.Text (" ", 0.84, 0.95, 1.0, 1, "Sans 20", "left");
+    global.dialog.prompt = Sprite (prompt_image);
+    global.dialog.prompt.SetOpacity (0);
+
+    caret_image = Image ("caret.png").Scale (dlg_caret_w, dlg_caret_h);
+    global.dialog.caret = Sprite (caret_image);
+    global.dialog.caret.SetOpacity (0);
+
+    footer_font = "Sans " + Math.Int (12 * dialog_scale);
+    footer_image = Image.Text ("press enter to unlock", 0.42, 0.57, 0.70, 1, footer_font, "left");
+    global.dialog.footer = Sprite (footer_image);
+    global.dialog.footer.SetOpacity (0);
+
+    caps_font = "Sans " + Math.Int (12 * dialog_scale);
+    caps_image = Image.Text ("CAPS LOCK ON", 1.0, 0.72, 0.35, 1, caps_font, "right");
+    global.dialog.caps = Sprite (caps_image);
+    global.dialog.caps_w = caps_image.GetWidth ();
+    global.dialog.caps.SetOpacity (0);
+
+    error_image = Image ("halo-red.png").Scale (Math.Int (dlg_w * 1.45), Math.Int (dlg_h * 3.2));
+    global.dialog.error = Sprite (error_image);
+    global.dialog.error.SetPosition (cx - dlg_w * 0.725, dlg_y - dlg_h, 9998);
+    global.dialog.error.SetOpacity (0);
+
+    global.dialog.bullet_image = Image ("dot.png").Scale (dlg_dot_size, dlg_dot_size);
+  }
+
+fun set_prompt_text (text)
+  {
+    if (!text) text = "Enter passphrase";
+    if (text == global.prompt_text) return;
+    global.prompt_text = text;
+
+    font = "Sans " + Math.Int (20 * dialog_scale);
+    prompt_image = Image.Text (text, 0.84, 0.95, 1.0, 1, font, "left");
+    if (!prompt_image) return;
+
+    max_width = dlg_w - 168 * dialog_scale;
+    if (prompt_image.GetWidth () > max_width)
+      {
+        ratio = max_width / prompt_image.GetWidth ();
+        prompt_image = prompt_image.Scale (max_width, Math.Int (prompt_image.GetHeight () * ratio));
+      }
+    global.dialog.prompt.SetImage (prompt_image);
+  }
+
+fun display_normal_callback ()
+  {
+    if (global.status == "password") global.burst_alpha = 1;
+    global.status = "normal";
+    global.last_bullets = 0;
+  }
+
+fun display_password_callback (prompt, bullets)
+  {
+    if (!global.dialog) dialog_setup ();
+
+    if (global.status == "password" && global.last_bullets > 0 && bullets == 0)
+      {
+        global.shake = 18;
+        global.error_alpha = 1;
+      }
+
+    global.status = "password";
+    global.last_bullets = bullets;
+    set_prompt_text (prompt);
+
+    for (index = 0; global.dialog.bullets[index] || index < bullets; index++)
+      {
+        if (!global.dialog.bullets[index])
+          {
+            global.dialog.bullets[index].sprite = Sprite (global.dialog.bullet_image);
+            global.dialog.bullets[index].born = global.frame;
+            global.dialog.bullets[index].x = dlg_x + dlg_prompt_x + index * dlg_dot_step;
+            global.dialog.bullets[index].y = dlg_y + dlg_dot_y;
+            global.dialog.bullets[index].sprite.SetPosition (global.dialog.bullets[index].x, global.dialog.bullets[index].y, 10001);
+          }
+        if (index < bullets)
+          global.dialog.bullets[index].sprite.SetOpacity (1);
+        else
+          global.dialog.bullets[index].sprite.SetOpacity (0);
+      }
+  }
+
+Plymouth.SetDisplayNormalFunction (display_normal_callback);
+Plymouth.SetDisplayPasswordFunction (display_password_callback);
+
+#----------------------------------------- Messages ------------------------------
+
+message_sprite = Sprite ();
+message_sprite.SetPosition (0, 0, 10002);
+message_sprite.SetOpacity (0);
+
+fun display_message_callback (text)
+  {
+    if (!text) return;
+    font = "Sans " + Math.Int (16 * dialog_scale);
+    message_image = Image.Text (text, 1.0, 0.68, 0.44, 1, font, "center");
+    if (!message_image) return;
+
+    max_width = W * 0.72;
+    if (message_image.GetWidth () > max_width)
+      {
+        ratio = max_width / message_image.GetWidth ();
+        message_image = message_image.Scale (max_width, Math.Int (message_image.GetHeight () * ratio));
+      }
+    message_sprite.SetImage (message_image);
+    message_sprite.SetPosition (cx - message_image.GetWidth () / 2, wy + H * 0.835, 10002);
+    message_sprite.SetOpacity (1);
+  }
+
+fun hide_message_callback (text)
+  {
+    message_sprite.SetOpacity (0);
+  }
+
+Plymouth.SetDisplayMessageFunction (display_message_callback);
+Plymouth.SetHideMessageFunction (hide_message_callback);
+
+#----------------------------------------- Boot status ---------------------------
+
+fun update_status_callback (text)
+  {
+    if (!text || text == "")
+      {
+        status_sprite.SetOpacity (0);
+        return;
+      }
+    font = "Sans " + Math.Int (14 * scale);
+    status_image = Image.Text (text, 0.60, 0.73, 0.86, 1, font, "center");
+    if (!status_image) return;
+
+    max_width = W * 0.66;
+    if (status_image.GetWidth () > max_width)
+      {
+        ratio = max_width / status_image.GetWidth ();
+        status_image = status_image.Scale (max_width, Math.Int (status_image.GetHeight () * ratio));
+      }
+    status_sprite.SetImage (status_image);
+    status_sprite.SetPosition (cx - status_image.GetWidth () / 2, global.logo_y + logo_size + 26 * scale, 20);
+    status_sprite.SetOpacity (0.5);
+  }
+
+Plymouth.SetUpdateStatusFunction (update_status_callback);
+
+#----------------------------------------- Progress ------------------------------
+
+fun progress_callback (duration, progress)
+  {
+    global.progress = Math.Clamp (progress, 0, 1);
+    if (global.progress <= 0.001)
+      {
+        fill_sprite.SetOpacity (0);
+        glow_sprite.SetOpacity (0);
+        return;
+      }
+
+    fill_w = Math.Max (2, Math.Int (track_visible_w * global.progress));
+    fill_image = fill_original.Scale (fill_w, track_h);
+    fill_sprite.SetImage (fill_image);
+    fill_sprite.SetPosition (cx - track_visible_w / 2, wy + H * 0.935, 7);
+
+    glow_w = Math.Int (fill_w + 14 * scale);
+    glow_image = glow_original.Scale (glow_w, Math.Max (6, Math.Int (track_h * 3)));
+    glow_sprite.SetImage (glow_image);
+    glow_sprite.SetPosition (cx - track_visible_w / 2 - 7 * scale, wy + H * 0.935 - track_h, 5);
+  }
+
+Plymouth.SetBootProgressFunction (progress_callback);
+
+#----------------------------------------- Animation -----------------------------
+
+fun refresh_callback ()
+  {
+    global.frame = global.frame + 1;
+    f = global.frame;
+    pulse = (Math.Sin (f * 0.055) + 1) / 2;
+
+    # Ease the dialog in and out.
+    target_dialog = 0;
+    if (global.status == "password") target_dialog = 1;
+    global.dialog_alpha = global.dialog_alpha + (target_dialog - global.dialog_alpha) * 0.20;
+    da = global.dialog_alpha;
+
+    # Logo floats in boot, slides up when the passphrase is needed.
+    target_logo = logo_y_normal;
+    if (global.status == "password") target_logo = logo_y_password;
+    target_logo = target_logo + Math.Sin (f * 0.032) * 4 * scale;
+    global.logo_y = global.logo_y + (target_logo - global.logo_y) * 0.10;
+
+    logo_sprite.SetX (logo_x);
+    logo_sprite.SetY (global.logo_y);
+    logo_sprite.SetOpacity (0.94 + 0.06 * pulse);
+
+    halo_sprite.SetX (cx - halo_size / 2);
+    halo_sprite.SetY (global.logo_y + logo_size / 2 - halo_size / 2);
+    halo_sprite.SetOpacity ((0.40 + 0.18 * pulse) * (1 - da * 0.25));
+
+    burst_sprite.SetX (cx - halo_size / 2);
+    burst_sprite.SetY (global.logo_y + logo_size / 2 - halo_size / 2);
+    global.burst_alpha = global.burst_alpha * 0.90;
+    burst_sprite.SetOpacity (global.burst_alpha * 0.75);
+
+    # Orbiting sparks.
+    for (i = 0; i < 3; i++)
+      {
+        angle = f * 0.020 + i * 2.094;
+        orbit[i].SetX (cx + Math.Cos (angle) * orbit_radius - orbit_size / 2);
+        orbit[i].SetY (global.logo_y + logo_size / 2 + Math.Sin (angle) * orbit_radius - orbit_size / 2);
+        orbit[i].SetOpacity ((0.20 + 0.60 * (1 - da)) * (0.45 + 0.55 * ((Math.Sin (angle * 1.7) + 1) / 2)));
+      }
+
+    # Status subtitle.
+    status_alpha = 0.5 * (1 - da);
+    if (!is_boot) status_alpha = 0;
+    status_sprite.SetY (global.logo_y + logo_size + 26 * scale);
+    status_sprite.SetOpacity (status_alpha);
+
+    # Progress line: visible on boot, gone for the passphrase and shutdown.
+    target_bar = 0;
+    if (is_boot && global.status != "password" && global.progress > 0.001 && global.progress < 0.999) target_bar = 1;
+    global.bar_alpha = global.bar_alpha + (target_bar - global.bar_alpha) * 0.16;
+    track_sprite.SetOpacity (global.bar_alpha * 0.95);
+    if (global.progress > 0.001)
+      {
+        fill_sprite.SetOpacity (global.bar_alpha);
+        glow_sprite.SetOpacity (global.bar_alpha * 0.45);
+      }
+    else
+      {
+        fill_sprite.SetOpacity (0);
+        glow_sprite.SetOpacity (0);
+      }
+
+    if (!global.dialog) return;
+
+    # Shake + warning flush on a wrong passphrase.
+    if (global.shake > 0) global.shake = global.shake - 1;
+    shake_x = 0;
+    if (global.shake > 0) shake_x = Math.Sin (global.shake * 1.5) * 9 * scale;
+    global.error_alpha = global.error_alpha * 0.92;
+    global.dialog.error.SetOpacity (global.error_alpha * 0.65);
+
+    slide = (1 - da) * 26 * scale;
+    panel_x = dlg_x + shake_x;
+    panel_y = dlg_y + slide;
+
+    global.dialog.panel.SetPosition (panel_x, panel_y, 10000);
+    global.dialog.panel.SetOpacity (da);
+
+    lock_x = panel_x + 36 * dialog_scale;
+    lock_y = panel_y + (dlg_h - dlg_lock_size) / 2;
+    global.dialog.lock.SetPosition (lock_x, lock_y, 10001);
+    global.dialog.lock.SetOpacity (da * (0.86 + 0.14 * pulse));
+
+    prompt_x = panel_x + dlg_prompt_x;
+    prompt_y = panel_y + dlg_prompt_y;
+    global.dialog.prompt.SetPosition (prompt_x, prompt_y, 10001);
+    global.dialog.prompt.SetOpacity (da);
+
+    global.dialog.footer.SetPosition (prompt_x, panel_y + 124 * dialog_scale, 10001);
+    global.dialog.footer.SetOpacity (da * 0.85);
+
+    global.dialog.caps.SetPosition (panel_x + dlg_w - 36 * dialog_scale - global.dialog.caps_w,
+                                    panel_y + 124 * dialog_scale, 10001);
+    if (Plymouth.GetCapslockState ())
+      global.dialog.caps.SetOpacity (da);
+    else
+      global.dialog.caps.SetOpacity (0);
+
+    caret_alpha = da;
+    for (index = 0; global.dialog.bullets[index]; index++)
+      {
+        bullet = global.dialog.bullets[index];
+        age = f - bullet.born;
+        pop = 1;
+        lift = 0;
+        if (age < 6)
+          {
+            pop = age / 6;
+            lift = (1 - pop) * 7 * scale;
+          }
+        bullet.sprite.SetPosition (panel_x + dlg_prompt_x + index * dlg_dot_step,
+                                  panel_y + dlg_dot_y - lift, 10001);
+        if (index < global.last_bullets)
+          {
+            bullet.sprite.SetOpacity (da * pop);
+            caret_alpha = da;
+          }
+        else
+          bullet.sprite.SetOpacity (0);
+      }
+
+    caret_x = panel_x + dlg_prompt_x + global.last_bullets * dlg_dot_step + 4 * dialog_scale;
+    caret_y = panel_y + dlg_dot_y + (dlg_dot_size - dlg_caret_h) / 2;
+    global.dialog.caret.SetPosition (caret_x, caret_y, 10002);
+    if (caret_alpha > 0 && Math.Sin (f * 0.22) > -0.2)
+      global.dialog.caret.SetOpacity (da);
+    else
+      global.dialog.caret.SetOpacity (0);
+  }
+
+Plymouth.SetRefreshFunction (refresh_callback);
+
+#----------------------------------------- Quit ---------------------------------
+
+fun quit_callback ()
+  {
+    logo_sprite.SetOpacity (1);
+  }
+
+Plymouth.SetQuitFunction (quit_callback);

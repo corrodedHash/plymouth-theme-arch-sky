@@ -1,0 +1,12 @@
+[Plymouth Theme]
+Name=Arch Sky
+Description=Frosted passphrase panel, aurora backdrop, and a quiet progress line.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/arch-sky
+ScriptFile=/usr/share/plymouth/themes/arch-sky/arch-sky.script
+ConsoleLogBackgroundColor=0xcc0a0f1e
+
+[script-env-vars]
+theme_name=arch-sky

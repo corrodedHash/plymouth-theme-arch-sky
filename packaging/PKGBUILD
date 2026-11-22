@@ -1,0 +1,41 @@
+# Maintainer: Your Name <you@example.com>
+#
+# Packaging rules this file follows (and why):
+#   * The package only *installs files*. It never selects the theme and never
+#     runs mkinitcpio: the initramfs is per-machine, and a package must not
+#     reconfigure a running system.
+#   * The usage hint goes in the .install file, not in post_install logic.
+#   * assets/logo.png is derived from the Arch logo shipped by `filesystem`
+#     (core). That artwork is a trademark of Arch Linux and is NOT covered by
+#     the MIT license below; see upstream's README.
+
+pkgname=plymouth-theme-arch-sky
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Aurora/starfield Plymouth splash with a frosted LUKS passphrase panel and a thin progress line'
+arch=('any')
+url="https://github.com/USER/arch-sky"
+license=('MIT')
+depends=('plymouth')
+install="${pkgname}.install"
+
+# The tag and pkgver must match: CI derives pkgver from the pushed tag.
+source=("${pkgname}::git+${url}.git#tag=v${pkgver}")
+sha256sums=('SKIP')
+
+package() {
+  local themedir="${pkgdir}/usr/share/plymouth/themes/arch-sky"
+
+  # The theme directory name is not cosmetic: arch-sky.plymouth and
+  # arch-sky.script hardcode /usr/share/plymouth/themes/arch-sky, and
+  # the images are loaded by bare filename from that directory.
+  install -dm755 "${themedir}"
+  install -m644 "${srcdir}/${pkgname}/arch-sky.plymouth" \
+                 "${srcdir}/${pkgname}/arch-sky.script" "${themedir}/"
+  install -m644 "${srcdir}/${pkgname}"/assets/*.png "${themedir}/"
+
+  install -Dm644 "${srcdir}/${pkgname}/README.md" \
+    "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+  install -Dm644 "${srcdir}/${pkgname}/tools/make_assets.py" \
+    "${pkgdir}/usr/share/doc/${pkgname}/make_assets.py"
+}
