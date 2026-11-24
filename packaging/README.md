@@ -36,7 +36,10 @@ never handles the signing key: it builds the package and scp's the
 (`repo-add` plus signing, run by its timer) then folds it into `skyrepo.db` and
 signs the database. Clients see the package after that run.
 
-`.github/workflows/publish.yml` runs on every `v*` tag push:
+`.github/workflows/publish.yml` is **manual for now** — the `v*` tag trigger is
+commented out until the first release has been deployed by hand. Run it from
+the Actions tab, or use the commands below. Once the first deploy is done,
+uncomment `push: tags: ["v*"]`; the workflow then:
 
 1. builds the package in an `archlinux:base-devel` container,
 2. `scp`s the `.pkg.tar.zst` to `$DEPLOY_TARGET/$PACMAN_ARCH/`,
@@ -65,7 +68,7 @@ happily (the official repositories do the same); a file dropped in `any/` would
 simply never be seen. Set `PACMAN_ARCH=any` only if you also add an `any`
 server line to `/etc/pacman.conf`.
 
-## Manual publish
+## Manual publish (first deploy)
 
 Build the package:
 

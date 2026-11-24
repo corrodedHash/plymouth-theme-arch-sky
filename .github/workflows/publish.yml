@@ -1,7 +1,11 @@
 name: publish
 
-# Push a v* tag to build plymouth-theme-arch-sky and scp the package to the
-# pacman repository at pacman.thasky.one.
+# Build plymouth-theme-arch-sky and scp the package to the pacman repository
+# at pacman.thasky.one.
+#
+# The tag trigger is commented out for now: the first release is deployed by
+# hand. Re-enable `push: tags: ["v*"]` once that is done; workflow_dispatch
+# still allows a manual run from the Actions tab meanwhile.
 #
 # The repository database is not touched here. Indexing belongs to the server:
 # the files under DEPLOY_TARGET are re-indexed and re-signed by the
@@ -17,8 +21,9 @@ name: publish
 #   PACMAN_ARCH    directory the package is uploaded to, default x86_64
 
 on:
-  push:
-    tags: ["v*"]
+  # Disabled for the first, hand-made deploy. Uncomment to publish on a tag:
+  # push:
+  #   tags: ["v*"]
   workflow_dispatch:
 
 permissions:
