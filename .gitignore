@@ -1,5 +1,6 @@
 # makepkg output
-packaging/plymouth-theme-arch-sky/src/
-packaging/plymouth-theme-arch-sky/pkg/
+packaging/src/
+packaging/pkg/
+packaging/stage/
 *.pkg.tar.zst
 *.pkg.tar.zst.sig

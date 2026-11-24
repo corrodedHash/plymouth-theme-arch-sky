@@ -29,23 +29,44 @@ Normal boot (logo, live status, thin progress line):
 
 ## Install
 
-From your pacman repository:
+From the pacman repository (`[skyrepo]` in `/etc/pacman.conf`, see
+`packaging/README.md`):
 
 ```nushell
 sudo pacman -Syu plymouth-theme-arch-sky
+```
+
+The package only installs files; it does not select the theme, because the
+theme has to be baked into the initramfs and that is per machine. Select it
+yourself and rebuild:
+
+```nushell
 sudo plymouth-set-default-theme -R arch-sky
 ```
 
-The package definition is in `packaging/plymouth-theme-arch-sky/`. Or install
-from this checkout, which copies the files and rebuilds in one go:
+Or install from this checkout, which copies the files, selects the theme and
+rebuilds in one go:
 
 ```nushell
-sudo /var/lib/opencode-agent/coding/bla/arch-sky/install.sh
+sudo ./install.sh                 # from the repo root
+sudo ./install.sh --no-uki-splash # also drop the static systemd-stub splash
 ```
 
-This copies the theme to `/usr/share/plymouth/themes/arch-sky`, selects it,
-and rebuilds the initramfs. The config is backed up to
-`/etc/plymouth/plymouthd.conf.bak-arch-sky`.
+That copies the theme to `/usr/share/plymouth/themes/arch-sky` and backs up the
+config to `/etc/plymouth/plymouthd.conf.bak-arch-sky`.
+
+To stop using it, reset to the distro default and rebuild:
+
+```nushell
+sudo plymouth-set-default-theme --reset -R
+```
+
+(`--reset` alone only deletes the `Theme=` line; without `-R` the old theme
+stays inside the initramfs until the next rebuild. On a stock Arch install the
+fallback is `bgrt`; use `-R script` to pin the stock script theme instead.)
+
+The package definition is in `packaging/`; publishing is documented in
+`packaging/README.md`.
 
 To preview the geometry without rebooting, look at `preview.png` next to this
 README.
@@ -73,7 +94,7 @@ So it cannot be "set to 2 seconds". The two real choices are:
    appears. The installer does this for you:
 
    ```nushell
-   sudo /var/lib/opencode-agent/coding/bla/arch-sky/install.sh --no-uki-splash
+   sudo ./install.sh --no-uki-splash
    ```
 
    It backs up the preset to `/etc/mkinitcpio.d/linux.preset.bak-arch-sky`
@@ -92,6 +113,8 @@ Plymouth itself disappears when `plymouth-quit` runs at the end of boot.
 ## Rollback
 
 ```nushell
+sudo plymouth-set-default-theme --reset -R   # back to the distro default
+# or pin the stock theme explicitly:
 sudo plymouth-set-default-theme -R script
 ```
 

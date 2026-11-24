@@ -1,0 +1,13 @@
+pkgbase = plymouth-theme-arch-sky
+	pkgdesc = Aurora/starfield Plymouth splash with a frosted LUKS passphrase panel and a thin progress line
+	pkgver = 1.0.0
+	pkgrel = 1
+	url = https://github.com/corrodedHash/plymouth-theme-arch-sky
+	install = plymouth-theme-arch-sky.install
+	arch = any
+	license = MIT
+	depends = plymouth
+	source = plymouth-theme-arch-sky::git+https://github.com/corrodedHash/plymouth-theme-arch-sky.git#tag=v1.0.0
+	sha256sums = SKIP
+
+pkgname = plymouth-theme-arch-sky
