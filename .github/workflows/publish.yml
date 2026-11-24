@@ -1,0 +1,106 @@
+name: publish
+
+# Push a v* tag to build plymouth-theme-arch-sky and scp the package to the
+# pacman repository at pacman.thasky.one.
+#
+# The repository database is not touched here. Indexing belongs to the server:
+# the files under DEPLOY_TARGET are re-indexed and re-signed by the
+# repository's own timer/updater, so clients see the new package after that
+# run. That also keeps the signing key off GitHub.
+#
+# Repository secrets:
+#   SSH_PRIVATE_KEY  key allowed to write DEPLOY_TARGET
+#   SSH_KNOWN_HOSTS  pinned host key for pacman.thasky.one
+#
+# Repository variables (optional):
+#   DEPLOY_TARGET  scp destination prefix, default thasky@pacman.thasky.one:/srv/pacman
+#   PACMAN_ARCH    directory the package is uploaded to, default x86_64
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pacman-publish
+  cancel-in-progress: false
+
+env:
+  DEPLOY_TARGET: ${{ vars.DEPLOY_TARGET || 'thasky@pacman.thasky.one:/srv/pacman' }}
+  PACMAN_ARCH: ${{ vars.PACMAN_ARCH || 'x86_64' }}
+  PKGBUILD_DIR: packaging
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git openssh curl
+
+      # The tag is the version; keep pkgver in sync here instead of by hand.
+      - name: Set pkgver from tag
+        if: github.ref_type == 'tag'
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sed -i "s/^pkgver=.*/pkgver=${version}/" "${PKGBUILD_DIR}/PKGBUILD"
+
+      # makepkg refuses to run as root and container steps run as root.
+      - name: Create build user
+        run: |
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          install -d -m 700 -o builder -g builder /home/builder/.ssh
+
+      - name: Import deploy key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          printf '%s\n' "$SSH_PRIVATE_KEY" > /home/builder/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > /home/builder/.ssh/known_hosts
+          chmod 600 /home/builder/.ssh/id_ed25519
+          chmod 644 /home/builder/.ssh/known_hosts
+          chown -R builder /home/builder/.ssh
+
+      # --nodeps: plymouth is only needed to *use* the theme, not to package
+      # it, and pulling the whole dependency chain into the container is waste.
+      - name: Build
+        run: |
+          runuser -u builder -- env HOME=/home/builder bash -c '
+            set -euo pipefail
+            cd "$GITHUB_WORKSPACE/$PKGBUILD_DIR"
+            makepkg --noconfirm --nodeps --cleanbuild
+          '
+
+      # Plain scp: the server indexes what lands in this directory.
+      - name: Upload with scp
+        run: |
+          runuser -u builder -- env HOME=/home/builder \
+            DEPLOY_TARGET="$DEPLOY_TARGET" PACMAN_ARCH="$PACMAN_ARCH" \
+            PKGBUILD_DIR="$PKGBUILD_DIR" bash -c '
+            set -euo pipefail
+            scp -i /home/builder/.ssh/id_ed25519 \
+              -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              "$PKGBUILD_DIR"/*.pkg.tar.zst \
+              "${DEPLOY_TARGET}/${PACMAN_ARCH}/"
+          '
+
+      - name: Check the file is served
+        run: |
+          file=$(basename "$(ls "${PKGBUILD_DIR}"/*.pkg.tar.zst)")
+          url="https://pacman.thasky.one/${PACMAN_ARCH}/${file}"
+          for attempt in 1 2 3 4 5; do
+            if curl -fsSI "$url" >/dev/null; then
+              echo "Served: $url"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::$file was uploaded but is not served at $url"
+          exit 1

@@ -1,4 +1,4 @@
-# Maintainer: Your Name <you@example.com>
+# Maintainer: thasky <thasky@thasky.one>
 #
 # Packaging rules this file follows (and why):
 #   * The package only *installs files*. It never selects the theme and never
@@ -14,7 +14,7 @@ pkgver=1.0.0
 pkgrel=1
 pkgdesc='Aurora/starfield Plymouth splash with a frosted LUKS passphrase panel and a thin progress line'
 arch=('any')
-url="https://github.com/USER/arch-sky"
+url="https://github.com/corrodedHash/plymouth-theme-arch-sky"
 license=('MIT')
 depends=('plymouth')
 install="${pkgname}.install"
